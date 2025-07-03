@@ -169,38 +169,40 @@ dp = Dispatcher()
 # --- Состояния пользователей для AI ---
 user_states = {}
 
-# # --- Кнопки ---
-# def main_menu():
-#     return InlineKeyboardMarkup(inline_keyboard=[
-#         [InlineKeyboardButton(text='🍓 Ноты', callback_data='instruction')],
-#         [InlineKeyboardButton(text='🍦 Прайс', callback_data='price'), InlineKeyboardButton(text='🍿 Магазин', callback_data='shop'), InlineKeyboardButton(text='♾️ Вопросы', callback_data='questions')],
-#         [InlineKeyboardButton(text='🎮 Чат', callback_data='chat'), InlineKeyboardButton(text='💎 Статьи', callback_data='articles'), InlineKeyboardButton(text='🏆 Отзывы', callback_data='reviews')],
-#         [InlineKeyboardButton(text='🧸 Ai-Медвежонок', callback_data='ai')]
-#     ])
+# --- Healthcheck endpoint ---
+async def healthcheck(request):
+    logging.info("Healthcheck requested")
+    return web.Response(text="OK")
 
 # --- Обработка обычных сообщений ---
 @dp.message(F.text & ~F.text.startswith('/'))
 async def handle_regular_message(message: Message):
+    logging.info(f"Received message from user {message.from_user.id}: {message.text}")
     user_id = message.from_user.id
     # Режим AI
     if user_states.get(user_id) == 'awaiting_ai_question':
         question = message.text.strip()
         try:
+            logging.info(f"Sending question to DeepSeek: {question}")
             ai_answer = ask_deepseek(question)
             await message.answer(ai_answer, parse_mode=ParseMode.HTML)
+            logging.info("AI answer sent")
         except Exception as e:
             ai_answer = "Ошибка при обращении к AI: " + str(e)
             await message.answer(ai_answer)
+            logging.error(f"AI error: {e}")
         return
     # Обычный поиск
     text = message.text.strip().lower()
     search_vals = [v for v in map(str.strip, text.split(',')) if v]
     if not search_vals:
         await message.answer('Пустой запрос!')
+        logging.warning("Empty search query")
         return
     search_pattern = '|'.join(map(re.escape, search_vals))
     search_sql = ' AND '.join([f"description LIKE '%{v}%'" for v in search_vals])
     query = f"SELECT * FROM aromas WHERE {search_sql} ORDER BY RANDOM() LIMIT 1"
+    logging.debug(f"SQL Query: {query}")
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(query)
@@ -218,13 +220,17 @@ async def handle_regular_message(message: Message):
         ]
         reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
         await message.answer(f'✨ {brand} {aroma}\n\n{description}', reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+        logging.info(f"Found and sent aroma: {brand} {aroma}")
     else:
         await message.answer('Я отвечаю за ноты. С этим вопросом тебя ждёт 🧸 Ai-Медвежонок в меню')
+        logging.info("No aroma found for query")
     conn.close()
+    logging.debug("DB connection closed")
 
 # --- Обработка обычных команд ---
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
+    logging.info(f"/start command from user {message.from_user.id}")
     print("Получена команда /start")
     text = (
         '<b>Здравствуйте!\n\n'
@@ -236,15 +242,18 @@ async def cmd_start(message: Message):
         parse_mode="HTML",
         reply_markup=main_menu()
     )
-    
+    logging.info("Sent start message with main menu")
+
 # --- Обработка callback-кнопок ---
 @dp.callback_query()
 async def handle_callback(callback: CallbackQuery):
     data = callback.data
     user_id = callback.from_user.id
+    logging.info(f"Callback from user {user_id}: {data}")
     # Если нажата любая кнопка кроме 'ai', сбрасываем режим AI
     if data != 'ai' and user_id in user_states:
         user_states.pop(user_id, None)
+        logging.debug(f"AI state reset for user {user_id}")
     if data == 'instruction':
         text = (
             '🍉 Напиши любую ноту ( апельсин | клубника ) и я пришлю, что найду! 🧸'
@@ -253,10 +262,12 @@ async def handle_callback(callback: CallbackQuery):
             text,
             parse_mode="HTML"
         )
+        logging.info("Sent instruction text")
     elif data == 'ai':
         user_states[user_id] = 'awaiting_ai_question'
         result = greet()
         await callback.message.edit_text(result)
+        logging.info("Switched user to AI mode and sent greeting")
     elif data.startswith('repeat_'):
         find_id = int(data.split('_')[1])
         conn = sqlite3.connect(DB_PATH)
@@ -265,6 +276,7 @@ async def handle_callback(callback: CallbackQuery):
         row = c.fetchone()
         if not row:
             await callback.message.edit_text('Ничего не найдено!')
+            logging.warning(f"Repeat: find_id {find_id} not found")
             return
         search_string, patterns = row
         c.execute(search_string)
@@ -279,15 +291,20 @@ async def handle_callback(callback: CallbackQuery):
             ]
             reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
             await callback.message.edit_text(f'✨ {brand} {aroma}\n\n{description}', reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+            logging.info(f"Repeat: sent aroma {brand} {aroma}")
         else:
             await callback.message.edit_text('К сожалению, я не смог ничего найти! Попробуйте поискать что-то другое! 🙈')
+            logging.info(f"Repeat: no aroma found for find_id {find_id}")
         conn.close()
+        logging.debug("DB connection closed (repeat)")
     await callback.answer()
+    logging.debug("Callback answered")
 
 # --- Настройка вебхука ---
 async def on_startup(bot: Bot):
+    logging.info("on_startup: setting webhook...")
     await bot.set_webhook(f"{BASE_WEBHOOK_URL}{WEBHOOK_PATH}")
-    logging.info("Бот запущен и вебхук установлен!")
+    logging.info("Webhook set!")
 
 async def on_shutdown(bot: Bot):
     logging.warning('Выключение бота...')
@@ -296,23 +313,30 @@ async def on_shutdown(bot: Bot):
 
 # --- Запуск приложения ---
 def main():
+    logging.info("Starting main()...")
     init_db()
+    logging.info("DB initialized")
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
 
     app = web.Application()
+    app.router.add_get("/", healthcheck)
+    logging.info("Healthcheck endpoint added at /")
     webhook_requests_handler = SimpleRequestHandler(
         dispatcher=dp,
         bot=bot,
     )
-    
+    logging.info("SimpleRequestHandler created")
     webhook_requests_handler.register(app, path=WEBHOOK_PATH)
+    logging.info(f"Webhook handler registered at {WEBHOOK_PATH}")
     setup_application(app, dp, bot=bot)
+    logging.info("Application setup complete")
     
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
     
     try:
+        logging.info(f"Running app on {WEB_SERVER_HOST}:{WEB_SERVER_PORT}")
         web.run_app(app, host=WEB_SERVER_HOST, port=WEB_SERVER_PORT)
     except KeyboardInterrupt:
         logger.info("Бот остановлен пользователем")
