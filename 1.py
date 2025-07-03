@@ -19,7 +19,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
 # --- Конфигурация ---
-TOKEN = '8102330882:AAESnqYWciSpebuEmghAqjTKcgJtq3fSQ-4'
+TOKEN = os.getenv('TOKEN')
 WEB_SERVER_HOST = '0.0.0.0'  # Хост для веб-сервера
 WEB_SERVER_PORT = 3000       # Порт для веб-сервера
 WEBHOOK_PATH = '/webhook'    # Путь для вебхука
