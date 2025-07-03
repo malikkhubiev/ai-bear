@@ -24,7 +24,7 @@ WEB_SERVER_HOST = '0.0.0.0'  # Хост для веб-сервера
 WEB_SERVER_PORT = 3000       # Порт для веб-сервера
 WEBHOOK_PATH = '/webhook'    # Путь для вебхука
 
-DB_PATH = "bahur_bot.db"
+DB_PATH = "aromas.db"
 BASE_WEBHOOK_URL = os.getenv('WEBHOOK_BASE_URL')
 
 # --- Инициализация бота ---
