@@ -166,6 +166,7 @@ async def handle_regular_message(message: Message):
         question = message.text.strip()
         try:
             logging.info(f"Sending question to DeepSeek: {question}")
+            await message.answer("Начинаю поиск...")
             ai_answer = ask_deepseek(question)
             await message.answer(ai_answer, parse_mode=ParseMode.HTML)
             logging.info("AI answer sent")
@@ -189,6 +190,7 @@ async def handle_regular_message(message: Message):
     c = conn.cursor()
     c.execute(query)
     db_val = c.fetchone()
+    logging.debug(f"db_val: {db_val}")
     if db_val:
         brand, aroma, description, url = db_val[1], db_val[2], db_val[3], db_val[4]
         matches = list(re.finditer(search_pattern, description, re.IGNORECASE))
