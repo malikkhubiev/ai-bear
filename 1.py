@@ -24,31 +24,12 @@ WEB_SERVER_HOST = '0.0.0.0'  # Хост для веб-сервера
 WEB_SERVER_PORT = 3000       # Порт для веб-сервера
 WEBHOOK_PATH = '/webhook'    # Путь для вебхука
 
-DB_PATH = os.getenv('DB_PATH')
+DB_PATH = "bahur_bot.db"
 BASE_WEBHOOK_URL = os.getenv('WEBHOOK_BASE_URL')
 
 # --- Инициализация бота ---
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-
-# --- Инициализация базы данных ---
-def init_db():
-    conn = sqlite3.connect('bahur_bot.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS aromas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        brand TEXT,
-        aroma TEXT,
-        description TEXT,
-        URL TEXT
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS finds (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        search_string TEXT,
-        patterns TEXT
-    )''')
-    conn.commit()
-    conn.close()
 
 # --- DeepSeek и данные Bahur ---
 def load_bahur_data():
@@ -315,8 +296,6 @@ async def on_shutdown(bot: Bot):
 # --- Запуск приложения ---
 def main():
     logging.info("Starting main()...")
-    init_db()
-    logging.info("DB initialized")
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
 
