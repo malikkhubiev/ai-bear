@@ -18,6 +18,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
+import aiohttp
 
 # --- Конфигурация ---
 TOKEN = os.getenv('TOKEN')
@@ -38,11 +39,12 @@ def load_bahur_data():
         return f.read()
 
 # --- Поиск нот через внешний API Bahur ---
-def search_note_api(note):
+async def search_note_api(note):
     url = f"https://api.alexander-dev.ru/bahur/search/?text={note}"
-    response = requests.get(url, timeout=10)
-    response.raise_for_status()
-    return response.json()
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, timeout=10) as resp:
+            resp.raise_for_status()
+            return await resp.json()
 
 BAHUR_DATA = load_bahur_data()
 
@@ -116,7 +118,7 @@ def greet():
     ])
 
 
-def ask_deepseek(question):
+async def ask_deepseek(question):
     url = "https://api.deepseek.com/v1/chat/completions"
     headers = {
         "Authorization": "Bearer sk-a6d1ccf8368d4e23a01712ccfc4d4e71",  # <-- Вставьте свой ключ
@@ -145,9 +147,11 @@ def ask_deepseek(question):
         ],
         "temperature": 0.9
     }
-    response = requests.post(url, headers=headers, json=data, timeout=30)
-    response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"].strip()
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, headers=headers, json=data, timeout=30) as resp:
+            resp.raise_for_status()
+            result = await resp.json()
+            return result["choices"][0]["message"]["content"].strip()
 
 # --- Логирование ---
 logging.basicConfig(level=logging.INFO)
@@ -177,7 +181,7 @@ async def handle_regular_message(message: Message):
         if state == 'awaiting_ai_question':
             question = message.text.strip()
             logging.info(f"[SUPERLOG] DeepSeek question: {question}")
-            ai_answer = ask_deepseek(question)
+            ai_answer = await ask_deepseek(question)
             ai_answer = re.sub(r'[\*_~`>#\[\]\(\)!\-]', '', ai_answer)
             ai_answer = re.sub(r'<a\s+href=["\']{0,1}[\s\"\']{0,1}>.*?<\/a>', '', ai_answer, flags=re.DOTALL)
             ai_answer = re.sub(r'<a\s*>.*?<\/a>', '', ai_answer, flags=re.DOTALL)
@@ -189,7 +193,7 @@ async def handle_regular_message(message: Message):
         if state == 'awaiting_note_search':
             note = message.text.strip()
             logging.info(f"[SUPERLOG] Note search: {note}")
-            result = search_note_api(note)
+            result = await search_note_api(note)
             logging.info(f"[SUPERLOG] Note search API result: {result}")
             if result.get("status") == "success":
                 brand = result.get("brand")
@@ -270,10 +274,11 @@ async def handle_callback(callback: CallbackQuery):
             logging.info(f"[SUPERLOG] Repeatapi callback with aroma_id={aroma_id}")
             url = f"https://api.alexander-dev.ru/bahur/search/?id={aroma_id}"
             logging.info(f"[SUPERLOG] Repeatapi request url: {url}")
-            response = requests.get(url, timeout=10)
-            logging.info(f"[SUPERLOG] Repeatapi response status: {response.status_code}")
-            response.raise_for_status()
-            result = response.json()
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=10) as response:
+                    logging.info(f"[SUPERLOG] Repeatapi response status: {response.status}")
+                    response.raise_for_status()
+                    result = await response.json()
             logging.info(f"[SUPERLOG] Repeatapi API result: {result}")
             if result.get("status") == "success":
                 brand = result.get("brand")
