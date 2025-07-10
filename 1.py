@@ -28,6 +28,7 @@ WEBHOOK_PATH = '/webhook'    # Путь для вебхука
 
 DB_PATH = "aromas.db"
 BASE_WEBHOOK_URL = os.getenv('WEBHOOK_BASE_URL')
+DEEPSEEK_API = os.getenv('DEEPSEEK')
 
 # --- Инициализация бота ---
 bot = Bot(token=TOKEN)
@@ -121,7 +122,7 @@ def greet():
 async def ask_deepseek(question):
     url = "https://api.deepseek.com/v1/chat/completions"
     headers = {
-        "Authorization": "Bearer sk-a6d1ccf8368d4e23a01712ccfc4d4e71",  # <-- Вставьте свой ключ
+        "Authorization": f"Bearer {DEEPSEEK_API}",  # <-- Вставьте свой ключ
         "Content-Type": "application/json"
     }
     data = {
