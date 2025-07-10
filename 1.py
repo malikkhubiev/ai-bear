@@ -7,6 +7,7 @@ import nest_asyncio
 import random
 import os
 from aiohttp import web
+import traceback
 nest_asyncio.apply()
 
 from aiogram import Bot, Dispatcher, F, types
@@ -166,40 +167,37 @@ async def healthcheck(request):
 # --- Обработка обычных сообщений ---
 @dp.message(F.text & ~F.text.startswith('/'))
 async def handle_regular_message(message: Message):
-    logging.info(f"Received message from user {message.from_user.id}: {message.text}")
-    user_id = message.from_user.id
-    # Режим AI
-    if user_states.get(user_id) == 'awaiting_ai_question':
-        question = message.text.strip()
-        try:
-            logging.info(f"Sending question to DeepSeek: {question}")
+    try:
+        logging.info(f"[SUPERLOG] Incoming message: {message}")
+        user_id = message.from_user.id
+        logging.info(f"[SUPERLOG] user_id: {user_id}, text: {message.text}")
+        state = user_states.get(user_id)
+        logging.info(f"[SUPERLOG] user_state: {state}")
+        # Режим AI
+        if state == 'awaiting_ai_question':
+            question = message.text.strip()
+            logging.info(f"[SUPERLOG] DeepSeek question: {question}")
             ai_answer = ask_deepseek(question)
-            # Удаляем markdown-символы
             ai_answer = re.sub(r'[\*_~`>#\[\]\(\)!\-]', '', ai_answer)
-            # Удаляем только некорректные <a> теги: без href или с пустым href
-            ai_answer = re.sub(r'<a\s+href=["\']{0,1}[\s\"\']{0,1}>.*?</a>', '', ai_answer, flags=re.DOTALL)
-            ai_answer = re.sub(r'<a\s*>.*?</a>', '', ai_answer, flags=re.DOTALL)
+            ai_answer = re.sub(r'<a\s+href=["\']{0,1}[\s\"\']{0,1}>.*?<\/a>', '', ai_answer, flags=re.DOTALL)
+            ai_answer = re.sub(r'<a\s*>.*?<\/a>', '', ai_answer, flags=re.DOTALL)
+            logging.info(f"[SUPERLOG] DeepSeek answer: {ai_answer}")
             await message.answer(ai_answer, parse_mode=ParseMode.HTML)
-            logging.info("AI answer sent")
-        except Exception as e:
-            ai_answer = "Ошибка при обращении к AI: " + str(e)
-            await message.answer(ai_answer)
-            logging.error(f"AI error: {e}")
-        return
-    # Режим поиска нот через внешний API
-    if user_states.get(user_id) == 'awaiting_note_search':
-        note = message.text.strip()
-        logging.info(f"[NOTE_SEARCH] User {user_id} ищет ноту: {note}")
-        try:
+            logging.info("[SUPERLOG] AI answer sent")
+            return
+        # Режим поиска нот через внешний API
+        if state == 'awaiting_note_search':
+            note = message.text.strip()
+            logging.info(f"[SUPERLOG] Note search: {note}")
             result = search_note_api(note)
-            logging.info(f"[NOTE_SEARCH] API ответ: {result}")
+            logging.info(f"[SUPERLOG] Note search API result: {result}")
             if result.get("status") == "success":
                 brand = result.get("brand")
                 aroma = result.get("aroma")
                 description = result.get("description")
                 url = result.get("url")
                 aroma_id = result.get("ID")
-                logging.info(f"[NOTE_SEARCH] Найдено: {brand} {aroma} (id={aroma_id}) url={url}")
+                logging.info(f"[SUPERLOG] Found: {brand} {aroma} (id={aroma_id}) url={url}")
                 keyboard = [
                     [
                         InlineKeyboardButton(text='🚀 Подробнее', url=url),
@@ -212,15 +210,15 @@ async def handle_regular_message(message: Message):
                     reply_markup=reply_markup,
                     parse_mode=ParseMode.HTML
                 )
+                logging.info("[SUPERLOG] Note answer sent")
             else:
-                logging.info(f"[NOTE_SEARCH] Ничего не найдено по ноте: {note}")
+                logging.info(f"[SUPERLOG] Nothing found for note: {note}")
                 await message.answer("Ничего не найдено по этой ноте 😢")
-        except Exception as e:
-            logging.error(f"[NOTE_SEARCH] Ошибка поиска: {e}")
-            await message.answer(f"Ошибка поиска: {e}")
-        user_states.pop(user_id, None)
-        return
-    # --- Обычный поиск по локальной базе удалён ---
+            return
+        logging.info("[SUPERLOG] No special state, message ignored")
+    except Exception as e:
+        logging.error(f"[SUPERLOG] Exception in handle_regular_message: {e}\n{traceback.format_exc()}")
+        await message.answer(f"[ERROR] {e}")
 
 # --- Обработка обычных команд ---
 @dp.message(Command("start"))
@@ -242,48 +240,48 @@ async def cmd_start(message: Message):
 # --- Обработка callback-кнопок ---
 @dp.callback_query()
 async def handle_callback(callback: CallbackQuery):
-    data = callback.data
-    user_id = callback.from_user.id
-    logging.info(f"Callback from user {user_id}: {data}")
-    # Если нажата любая кнопка кроме 'ai', сбрасываем режим AI
-    if data != 'ai' and user_id in user_states:
-        user_states.pop(user_id, None)
-        logging.debug(f"AI state reset for user {user_id}")
-    if data == 'instruction':
-        user_states[user_id] = 'awaiting_note_search'
-        text = (
-            '🍉 Напиши любую ноту (например, апельсин, клубника) — я найду ароматы с этой нотой!'
-        )
-        await callback.message.edit_text(
-            text,
-            parse_mode="HTML"
-        )
-        logging.info("Switched user to note search mode")
-        await callback.answer()
-        return
-    elif data == 'ai':
-        user_states[user_id] = 'awaiting_ai_question'
-        result = greet()
-        await callback.message.edit_text(result)
-        logging.info("Switched user to AI mode and sent greeting")
-    elif data.startswith('repeatapi_'):
-        aroma_id = data.split('_', 1)[1]
-        logging.info(f"[REPEATAPI] Callback от user {user_id} с aroma_id={aroma_id}")
-        try:
+    try:
+        logging.info(f"[SUPERLOG] Incoming callback: {callback}")
+        data = callback.data
+        user_id = callback.from_user.id
+        logging.info(f"[SUPERLOG] Callback data: {data}, user_id: {user_id}")
+        if data != 'ai' and user_id in user_states:
+            user_states.pop(user_id, None)
+            logging.debug(f"[SUPERLOG] AI state reset for user {user_id}")
+        if data == 'instruction':
+            user_states[user_id] = 'awaiting_note_search'
+            text = (
+                '🍉 Напиши любую ноту (например, апельсин, клубника) — я найду ароматы с этой нотой!'
+            )
+            await callback.message.edit_text(
+                text,
+                parse_mode="HTML"
+            )
+            logging.info("[SUPERLOG] Switched user to note search mode")
+            await callback.answer()
+            return
+        elif data == 'ai':
+            user_states[user_id] = 'awaiting_ai_question'
+            result = greet()
+            await callback.message.edit_text(result)
+            logging.info("[SUPERLOG] Switched user to AI mode and sent greeting")
+        elif data.startswith('repeatapi_'):
+            aroma_id = data.split('_', 1)[1]
+            logging.info(f"[SUPERLOG] Repeatapi callback with aroma_id={aroma_id}")
             url = f"https://api.alexander-dev.ru/bahur/search/?id={aroma_id}"
-            logging.info(f"[REPEATAPI] Запрос к API: {url}")
+            logging.info(f"[SUPERLOG] Repeatapi request url: {url}")
             response = requests.get(url, timeout=10)
-            logging.info(f"[REPEATAPI] Статус ответа: {response.status_code}")
+            logging.info(f"[SUPERLOG] Repeatapi response status: {response.status_code}")
             response.raise_for_status()
             result = response.json()
-            logging.info(f"[REPEATAPI] API ответ: {result}")
+            logging.info(f"[SUPERLOG] Repeatapi API result: {result}")
             if result.get("status") == "success":
                 brand = result.get("brand")
                 aroma = result.get("aroma")
                 description = result.get("description")
                 url = result.get("url")
                 aroma_id = result.get("ID")
-                logging.info(f"[REPEATAPI] Найдено: {brand} {aroma} (id={aroma_id}) url={url}")
+                logging.info(f"[SUPERLOG] Repeatapi found: {brand} {aroma} (id={aroma_id}) url={url}")
                 keyboard = [
                     [
                         InlineKeyboardButton(text='🚀 Подробнее', url=url),
@@ -296,55 +294,56 @@ async def handle_callback(callback: CallbackQuery):
                     reply_markup=reply_markup,
                     parse_mode=ParseMode.HTML
                 )
+                logging.info("[SUPERLOG] Repeatapi answer sent")
             else:
-                logging.info(f"[REPEATAPI] Ничего не найдено по id: {aroma_id}")
+                logging.info(f"[SUPERLOG] Repeatapi nothing found for id: {aroma_id}")
                 await callback.message.edit_text("Ничего не найдено по этой ноте 😢")
-        except Exception as e:
-            logging.error(f"[REPEATAPI] Ошибка поиска: {e}")
-            await callback.message.edit_text(f"Ошибка поиска: {e}")
+            await callback.answer()
+            return
         await callback.answer()
-        return
-    await callback.answer()
-    logging.debug("Callback answered")
+        logging.debug("[SUPERLOG] Callback answered")
+    except Exception as e:
+        logging.error(f"[SUPERLOG] Exception in handle_callback: {e}\n{traceback.format_exc()}")
+        await callback.message.answer(f"[ERROR] {e}")
 
 # --- Настройка вебхука ---
 async def on_startup(bot: Bot):
-    logging.info("on_startup: setting webhook...")
+    logging.info("[SUPERLOG] on_startup: setting webhook...")
     await bot.set_webhook(f"{BASE_WEBHOOK_URL}{WEBHOOK_PATH}")
-    logging.info("Webhook set!")
+    logging.info("[SUPERLOG] Webhook set!")
 
 async def on_shutdown(bot: Bot):
-    logging.warning('Выключение бота...')
+    logging.warning('[SUPERLOG] Выключение бота...')
     await bot.delete_webhook()
-    logging.warning('Бот выключен')
+    logging.warning('[SUPERLOG] Бот выключен')
 
 # --- Запуск приложения ---
 def main():
-    logging.info("Starting main()...")
+    logging.info("[SUPERLOG] Starting main()...")
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
 
     app = web.Application()
     app.router.add_get("/", healthcheck)
-    logging.info("Healthcheck endpoint added at /")
+    logging.info("[SUPERLOG] Healthcheck endpoint added at /")
     webhook_requests_handler = SimpleRequestHandler(
         dispatcher=dp,
         bot=bot,
     )
-    logging.info("SimpleRequestHandler created")
+    logging.info("[SUPERLOG] SimpleRequestHandler created")
     webhook_requests_handler.register(app, path=WEBHOOK_PATH)
-    logging.info(f"Webhook handler registered at {WEBHOOK_PATH}")
+    logging.info(f"[SUPERLOG] Webhook handler registered at {WEBHOOK_PATH}")
     setup_application(app, dp, bot=bot)
-    logging.info("Application setup complete")
-    
+    logging.info("[SUPERLOG] Application setup complete")
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
-    
     try:
-        logging.info(f"Running app on {WEB_SERVER_HOST}:{WEB_SERVER_PORT}")
+        logging.info(f"[SUPERLOG] Running app on {WEB_SERVER_HOST}:{WEB_SERVER_PORT}")
         web.run_app(app, host=WEB_SERVER_HOST, port=WEB_SERVER_PORT)
     except KeyboardInterrupt:
-        logger.info("Бот остановлен пользователем")
+        logger.info("[SUPERLOG] Бот остановлен пользователем")
+    except Exception as e:
+        logger.error(f"[SUPERLOG] Exception in main: {e}\n{traceback.format_exc()}")
 
 # --- Утилита для отправки markdown-сообщений ---
 def send_markdown_message(message, text):
