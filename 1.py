@@ -187,7 +187,6 @@ async def handle_regular_message(message: Message):
         note = message.text.strip()
         logging.info(f"[NOTE_SEARCH] User {user_id} ищет ноту: {note}")
         try:
-            await message.answer("Ищу ароматы по вашей ноте...")
             result = search_note_api(note)
             logging.info(f"[NOTE_SEARCH] API ответ: {result}")
             if result.get("status") == "success":
