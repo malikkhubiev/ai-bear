@@ -185,27 +185,35 @@ async def handle_regular_message(message: Message):
     # Режим поиска нот через внешний API
     if user_states.get(user_id) == 'awaiting_note_search':
         note = message.text.strip()
+        logging.info(f"[NOTE_SEARCH] User {user_id} ищет ноту: {note}")
         try:
             await message.answer("Ищу ароматы по вашей ноте...")
             result = search_note_api(note)
+            logging.info(f"[NOTE_SEARCH] API ответ: {result}")
             if result.get("status") == "success":
                 brand = result.get("brand")
                 aroma = result.get("aroma")
                 description = result.get("description")
                 url = result.get("url")
                 aroma_id = result.get("ID")
+                logging.info(f"[NOTE_SEARCH] Найдено: {brand} {aroma} (id={aroma_id}) url={url}")
                 keyboard = [
-                    [InlineKeyboardButton(text='♾️ Повторить', callback_data=f'repeatapi_{aroma_id}')]
+                    [
+                        InlineKeyboardButton(text='🚀 Подробнее', url=url),
+                        InlineKeyboardButton(text='♾️ Повторить', callback_data=f'repeatapi_{aroma_id}')
+                    ]
                 ]
                 reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
                 await message.answer(
-                    f'✨ {brand} {aroma}\n\n{description}\n\n<a href="{url}">Подробнее</a>',
+                    f'✨ {brand} {aroma}\n\n{description}',
                     reply_markup=reply_markup,
                     parse_mode=ParseMode.HTML
                 )
             else:
+                logging.info(f"[NOTE_SEARCH] Ничего не найдено по ноте: {note}")
                 await message.answer("Ничего не найдено по этой ноте 😢")
         except Exception as e:
+            logging.error(f"[NOTE_SEARCH] Ошибка поиска: {e}")
             await message.answer(f"Ошибка поиска: {e}")
         user_states.pop(user_id, None)
         return
@@ -257,29 +265,39 @@ async def handle_callback(callback: CallbackQuery):
         logging.info("Switched user to AI mode and sent greeting")
     elif data.startswith('repeatapi_'):
         aroma_id = data.split('_', 1)[1]
+        logging.info(f"[REPEATAPI] Callback от user {user_id} с aroma_id={aroma_id}")
         try:
             url = f"https://api.alexander-dev.ru/bahur/search/?id={aroma_id}"
+            logging.info(f"[REPEATAPI] Запрос к API: {url}")
             response = requests.get(url, timeout=10)
+            logging.info(f"[REPEATAPI] Статус ответа: {response.status_code}")
             response.raise_for_status()
             result = response.json()
+            logging.info(f"[REPEATAPI] API ответ: {result}")
             if result.get("status") == "success":
                 brand = result.get("brand")
                 aroma = result.get("aroma")
                 description = result.get("description")
                 url = result.get("url")
                 aroma_id = result.get("ID")
+                logging.info(f"[REPEATAPI] Найдено: {brand} {aroma} (id={aroma_id}) url={url}")
                 keyboard = [
-                    [InlineKeyboardButton(text='♾️ Повторить', callback_data=f'repeatapi_{aroma_id}')]
+                    [
+                        InlineKeyboardButton(text='🚀 Подробнее', url=url),
+                        InlineKeyboardButton(text='♾️ Повторить', callback_data=f'repeatapi_{aroma_id}')
+                    ]
                 ]
                 reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
                 await callback.message.edit_text(
-                    f'✨ {brand} {aroma}\n\n{description}\n\n<a href="{url}">Подробнее</a>',
+                    f'✨ {brand} {aroma}\n\n{description}',
                     reply_markup=reply_markup,
                     parse_mode=ParseMode.HTML
                 )
             else:
+                logging.info(f"[REPEATAPI] Ничего не найдено по id: {aroma_id}")
                 await callback.message.edit_text("Ничего не найдено по этой ноте 😢")
         except Exception as e:
+            logging.error(f"[REPEATAPI] Ошибка поиска: {e}")
             await callback.message.edit_text(f"Ошибка поиска: {e}")
         await callback.answer()
         return
