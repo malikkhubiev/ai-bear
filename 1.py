@@ -173,7 +173,6 @@ async def handle_regular_message(message: Message):
         question = message.text.strip()
         try:
             logging.info(f"Sending question to DeepSeek: {question}")
-            await message.answer("Начинаю поиск...")
             ai_answer = ask_deepseek(question)
             await message.answer(ai_answer, parse_mode=ParseMode.HTML)
             logging.info("AI answer sent")
@@ -341,6 +340,13 @@ def main():
         web.run_app(app, host=WEB_SERVER_HOST, port=WEB_SERVER_PORT)
     except KeyboardInterrupt:
         logger.info("Бот остановлен пользователем")
+
+# --- Утилита для отправки markdown-сообщений ---
+def send_markdown_message(message, text):
+    return message.answer(text, parse_mode="Markdown")
+
+# Пример использования send_markdown_message:
+# await send_markdown_message(message, your_markdown_text)
 
 if __name__ == "__main__":
     main()
