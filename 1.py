@@ -174,7 +174,7 @@ async def handle_regular_message(message: Message):
         try:
             logging.info(f"Sending question to DeepSeek: {question}")
             ai_answer = ask_deepseek(question)
-            await message.answer(ai_answer, parse_mode=ParseMode.HTML)
+            await message.answer(ai_answer, parse_mode="Markdown")
             logging.info("AI answer sent")
         except Exception as e:
             ai_answer = "Ошибка при обращении к AI: " + str(e)
