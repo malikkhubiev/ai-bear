@@ -6,7 +6,7 @@
 $TOKEN = getenv('TOKEN') ?: 'ВАШ_ТОКЕН';
 $API_URL = "https://api.telegram.org/bot$TOKEN/";
 $WEBHOOK_URL = getenv('WEBHOOK_BASE_URL') ?: 'https://your.domain/webhook';
-$DEEPSEEK_KEY = getenv('DEEPSEEK_KEY') ?: 'sk-a6d1ccf8368d4e23a01712ccfc4d4e71';
+$DEEPSEEK_KEY = getenv('DEEPSEEK_KEY');
 $BAHUR_DATA = file_exists(__DIR__.'/bahur_data.txt') ? file_get_contents(__DIR__.'/bahur_data.txt') : '';
 $USER_STATE_FILE = __DIR__.'/user_states.json';
 
