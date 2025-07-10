@@ -38,7 +38,7 @@ def load_bahur_data():
 
 # --- Поиск нот через внешний API Bahur ---
 def search_note_api(note):
-    url = f"https://api.alexander-dev.ru/bahur/search/?note={note}"
+    url = f"https://api.alexander-dev.ru/bahur/search/?text={note}"
     response = requests.get(url, timeout=10)
     response.raise_for_status()
     return response.json()
@@ -193,8 +193,14 @@ async def handle_regular_message(message: Message):
                 aroma = result.get("aroma")
                 description = result.get("description")
                 url = result.get("url")
+                aroma_id = result.get("ID")
+                keyboard = [
+                    [InlineKeyboardButton(text='♾️ Повторить', callback_data=f'repeatapi_{aroma_id}')]
+                ]
+                reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
                 await message.answer(
                     f'✨ {brand} {aroma}\n\n{description}\n\n<a href="{url}">Подробнее</a>',
+                    reply_markup=reply_markup,
                     parse_mode=ParseMode.HTML
                 )
             else:
@@ -203,41 +209,7 @@ async def handle_regular_message(message: Message):
             await message.answer(f"Ошибка поиска: {e}")
         user_states.pop(user_id, None)
         return
-    # Обычный поиск
-    text = message.text.strip().lower()
-    search_vals = [v for v in map(str.strip, text.split(',')) if v]
-    if not search_vals:
-        await message.answer('Пустой запрос!')
-        logging.warning("Empty search query")
-        return
-    search_pattern = '|'.join(map(re.escape, search_vals))
-    search_sql = ' AND '.join([f"description LIKE '%{v}%'" for v in search_vals])
-    query = f"SELECT * FROM aromas WHERE {search_sql} ORDER BY RANDOM() LIMIT 1"
-    logging.debug(f"SQL Query: {query}")
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute(query)
-    db_val = c.fetchone()
-    logging.debug(f"db_val: {db_val}")
-    if db_val:
-        brand, aroma, description, url = db_val[1], db_val[2], db_val[3], db_val[4]
-        matches = list(re.finditer(search_pattern, description, re.IGNORECASE))
-        for match in set(m.group(0) for m in matches):
-            description = re.sub(re.escape(match), f'<u><b>{match}</b></u>', description, flags=re.IGNORECASE)
-        c.execute('INSERT INTO finds(search_string, patterns) VALUES (?, ?)', (query, search_pattern))
-        find_id = c.lastrowid
-        conn.commit()
-        keyboard = [
-            [InlineKeyboardButton(text='🚀 Подробнее', url=url), InlineKeyboardButton(text='♾️ Повторить', callback_data=f'repeat_{find_id}')]
-        ]
-        reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-        await message.answer(f'✨ {brand} {aroma}\n\n{description}', reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-        logging.info(f"Found and sent aroma: {brand} {aroma}")
-    else:
-        await message.answer('Я отвечаю за ноты. С этим вопросом тебя ждёт 🧸 Ai-Медвежонок в меню')
-        logging.info("No aroma found for query")
-    conn.close()
-    logging.debug("DB connection closed")
+    # --- Обычный поиск по локальной базе удалён ---
 
 # --- Обработка обычных команд ---
 @dp.message(Command("start"))
@@ -283,35 +255,34 @@ async def handle_callback(callback: CallbackQuery):
         result = greet()
         await callback.message.edit_text(result)
         logging.info("Switched user to AI mode and sent greeting")
-    elif data.startswith('repeat_'):
-        find_id = int(data.split('_')[1])
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute('SELECT search_string, patterns FROM finds WHERE id=?', (find_id,))
-        row = c.fetchone()
-        if not row:
-            await callback.message.edit_text('Ничего не найдено!')
-            logging.warning(f"Repeat: find_id {find_id} not found")
-            return
-        search_string, patterns = row
-        c.execute(search_string)
-        db_val = c.fetchone()
-        if db_val:
-            brand, aroma, description, url = db_val[1], db_val[2], db_val[3], db_val[4]
-            matches = list(re.finditer(patterns, description, re.IGNORECASE))
-            for match in set(m.group(0) for m in matches):
-                description = re.sub(re.escape(match), f'<u><b>{match}</b></u>', description, flags=re.IGNORECASE)
-            keyboard = [
-                [InlineKeyboardButton(text='🚀 Подробнее', url=url), InlineKeyboardButton(text='♾️ Повторить', callback_data=f'repeat_{find_id}')]
-            ]
-            reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-            await callback.message.edit_text(f'✨ {brand} {aroma}\n\n{description}', reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-            logging.info(f"Repeat: sent aroma {brand} {aroma}")
-        else:
-            await callback.message.edit_text('К сожалению, я не смог ничего найти! Попробуйте поискать что-то другое! 🙈')
-            logging.info(f"Repeat: no aroma found for find_id {find_id}")
-        conn.close()
-        logging.debug("DB connection closed (repeat)")
+    elif data.startswith('repeatapi_'):
+        aroma_id = data.split('_', 1)[1]
+        try:
+            url = f"https://api.alexander-dev.ru/bahur/search/?id={aroma_id}"
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            result = response.json()
+            if result.get("status") == "success":
+                brand = result.get("brand")
+                aroma = result.get("aroma")
+                description = result.get("description")
+                url = result.get("url")
+                aroma_id = result.get("ID")
+                keyboard = [
+                    [InlineKeyboardButton(text='♾️ Повторить', callback_data=f'repeatapi_{aroma_id}')]
+                ]
+                reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+                await callback.message.edit_text(
+                    f'✨ {brand} {aroma}\n\n{description}\n\n<a href="{url}">Подробнее</a>',
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await callback.message.edit_text("Ничего не найдено по этой ноте 😢")
+        except Exception as e:
+            await callback.message.edit_text(f"Ошибка поиска: {e}")
+        await callback.answer()
+        return
     await callback.answer()
     logging.debug("Callback answered")
 
