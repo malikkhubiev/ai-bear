@@ -176,6 +176,9 @@ async def handle_regular_message(message: Message):
             ai_answer = ask_deepseek(question)
             # Удаляем markdown-символы
             ai_answer = re.sub(r'[\*_~`>#\[\]\(\)!\-]', '', ai_answer)
+            # Удаляем только некорректные <a> теги: без href или с пустым href
+            ai_answer = re.sub(r'<a\s+href=["\']{0,1}[\s\"\']{0,1}>.*?</a>', '', ai_answer, flags=re.DOTALL)
+            ai_answer = re.sub(r'<a\s*>.*?</a>', '', ai_answer, flags=re.DOTALL)
             await message.answer(ai_answer, parse_mode=ParseMode.HTML)
             logging.info("AI answer sent")
         except Exception as e:
