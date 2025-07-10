@@ -36,6 +36,13 @@ def load_bahur_data():
     with open("bahur_data.txt", "r", encoding="utf-8") as f:
         return f.read()
 
+# --- Поиск нот через внешний API Bahur ---
+def search_note_api(note):
+    url = f"https://api.alexander-dev.ru/bahur/search/?note={note}"
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    return response.json()
+
 BAHUR_DATA = load_bahur_data()
 
 def main_menu() -> InlineKeyboardMarkup:
@@ -175,6 +182,27 @@ async def handle_regular_message(message: Message):
             await message.answer(ai_answer)
             logging.error(f"AI error: {e}")
         return
+    # Режим поиска нот через внешний API
+    if user_states.get(user_id) == 'awaiting_note_search':
+        note = message.text.strip()
+        try:
+            await message.answer("Ищу ароматы по вашей ноте...")
+            result = search_note_api(note)
+            if result.get("status") == "success":
+                brand = result.get("brand")
+                aroma = result.get("aroma")
+                description = result.get("description")
+                url = result.get("url")
+                await message.answer(
+                    f'✨ {brand} {aroma}\n\n{description}\n\n<a href="{url}">Подробнее</a>',
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await message.answer("Ничего не найдено по этой ноте 😢")
+        except Exception as e:
+            await message.answer(f"Ошибка поиска: {e}")
+        user_states.pop(user_id, None)
+        return
     # Обычный поиск
     text = message.text.strip().lower()
     search_vals = [v for v in map(str.strip, text.split(',')) if v]
@@ -239,14 +267,17 @@ async def handle_callback(callback: CallbackQuery):
         user_states.pop(user_id, None)
         logging.debug(f"AI state reset for user {user_id}")
     if data == 'instruction':
+        user_states[user_id] = 'awaiting_note_search'
         text = (
-            '🍉 Напиши любую ноту ( апельсин | клубника ) и я пришлю, что найду! 🧸'
+            '🍉 Напиши любую ноту (например, апельсин, клубника) — я найду ароматы с этой нотой!'
         )
         await callback.message.edit_text(
             text,
             parse_mode="HTML"
         )
-        logging.info("Sent instruction text")
+        logging.info("Switched user to note search mode")
+        await callback.answer()
+        return
     elif data == 'ai':
         user_states[user_id] = 'awaiting_ai_question'
         result = greet()
