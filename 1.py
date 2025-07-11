@@ -376,12 +376,6 @@ async def process_voice_message(voice, chat_id):
                 file_content = await response.aread()
                 
                 # Распознаем речь с использованием tempfile
-                try:
-                    import aifc
-                except ImportError:
-                    logger.error("Module 'aifc' not available, trying alternative approach")
-                    return "Распознавание речи временно недоступно. Пожалуйста, напишите ваш вопрос текстом."
-                
                 text_content = await recognize_voice_content(file_content)
                 # Если результат не ошибка, отправляем в дипсик
                 if text_content and not any(err in text_content for err in ["Ошибка", "Не удалось", "недоступно"]):
@@ -597,7 +591,6 @@ async def telegram_webhook_impl(update: dict, request: Request):
                 if voice:
                     logger.info(f"[TG] Voice message received from {user_id}")
                     await send_typing_action(chat_id)
-                    # Получаем текст из голоса и логируем его
                     file_id = voice["file_id"]
                     file_unique_id = voice["file_unique_id"]
                     duration = voice.get("duration", 0)
@@ -621,12 +614,6 @@ async def telegram_webhook_impl(update: dict, request: Request):
                                 await telegram_send_message(chat_id, "Ошибка при скачивании голосового файла.")
                                 return {"ok": True}
                             file_content = await response.aread()
-                            try:
-                                import aifc
-                            except ImportError:
-                                logger.error("Module 'aifc' not available, trying alternative approach")
-                                await telegram_send_message(chat_id, "Распознавание речи временно недоступно. Пожалуйста, напишите ваш вопрос текстом.")
-                                return {"ok": True}
                             text_content = await recognize_voice_content(file_content)
                             logger.info(f"[TG] Voice recognized text: {text_content}")
                             if text_content and not any(err in text_content for err in ["Ошибка", "Не удалось", "недоступно"]):
